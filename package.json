@@ -1,0 +1,26 @@
+{
+  "name": "ac_capston_save_banking",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DangVuDev/AC_CAPSTON_SAVE_BANKING.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/DangVuDev/AC_CAPSTON_SAVE_BANKING/issues"
+  },
+  "homepage": "https://github.com/DangVuDev/AC_CAPSTON_SAVE_BANKING#readme",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "hardhat": "^2.22.3",
+    "ts-node": "^10.9.2"
+  }
+}
