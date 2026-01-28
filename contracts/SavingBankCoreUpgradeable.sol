@@ -1,22 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IDepositCertificate} from "./interfaces/IDepositCertificate.sol";
+import {ISavingBankCore} from "./interfaces/ISavingBankCore.sol";
 
-/// @title SavingBank
-/// @notice Time-locked saving product using an ERC20 token with NFT-like deposit certificates.
-contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
+/// @title SavingBankCoreUpgradeable
+/// @notice Core logic sản phẩm tiết kiệm có kỳ hạn, tách riêng khỏi ERC721 certificate.
+/// Implement các interface nhỏ: ISavingPlanManager, IVaultManager, IDepositManager thông qua ISavingBankCore.
+contract SavingBankCoreUpgradeable is
+    Initializable,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    ISavingBankCore
+{
+    using SafeERC20 for IERC20;
+
     /// @dev Maximum APR in basis points (e.g. 5000 = 50%).
     uint32 public constant MAX_APR_BPS = 5000;
 
     /// @dev Maximum penalty in basis points (10000 = 100%).
     uint32 public constant MAX_PENALTY_BPS = 10000;
 
-    IERC20 public immutable token;
+    IERC20 public token;
+    IDepositCertificate public certificate;
 
     /// @notice Address receiving early-withdrawal penalties (can be zero address => penalties stay in vault).
     address public feeReceiver;
@@ -24,8 +37,8 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
     /// @notice Balance of the liquidity vault used to pay interest.
     uint256 public vaultBalance;
 
-    uint256 public nextPlanId = 1;
-    uint256 public nextDepositId = 1;
+    uint256 public nextPlanId;
+    uint256 public nextDepositId;
 
     struct SavingPlan {
         uint256 id;
@@ -62,56 +75,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
     mapping(uint256 => DepositInfo) public deposits;
     mapping(address => uint256) public activeDepositOf;
 
-    // ---------------------------------------------------------------------
-    // Events
-    // ---------------------------------------------------------------------
-
-    event PlanCreated(
-        uint256 indexed planId,
-        uint32 tenorDays,
-        uint32 aprBps,
-        uint256 minDeposit,
-        uint256 maxDeposit,
-        uint32 earlyWithdrawPenaltyBps,
-        bool enabled
-    );
-
-    event PlanUpdated(
-        uint256 indexed planId,
-        uint32 tenorDays,
-        uint32 aprBps,
-        uint256 minDeposit,
-        uint256 maxDeposit,
-        uint32 earlyWithdrawPenaltyBps,
-        bool enabled
-    );
-
-    event DepositOpened(
-        uint256 indexed depositId,
-        address indexed owner,
-        uint256 indexed planId,
-        uint256 principal,
-        uint64 maturityAt
-    );
-
-    event Withdrawn(
-        uint256 indexed depositId,
-        address indexed owner,
-        uint256 principal,
-        uint256 interest,
-        bool isEarly
-    );
-
-    event Renewed(
-        uint256 indexed oldDepositId,
-        uint256 indexed newDepositId,
-        uint256 newPrincipal
-    );
-
-    event VaultFunded(address indexed from, uint256 amount);
-    event VaultWithdrawn(address indexed to, uint256 amount);
-    event FeeReceiverUpdated(address indexed newFeeReceiver);
-
+   
     // ---------------------------------------------------------------------
     // Errors
     // ---------------------------------------------------------------------
@@ -122,7 +86,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
     error PlanDisabled();
     error InvalidAmount();
     error InvalidParameters();
-    error NotDepositOwnerOrApproved();
+    error NotDepositOwner();
     error DepositNotActive();
     error NotMatured();
     error AlreadyMatured();
@@ -130,19 +94,32 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
     error AlreadyHasActiveDeposit();
 
     // ---------------------------------------------------------------------
-    // Constructor
+    // Initializer
     // ---------------------------------------------------------------------
 
-    constructor(
-        IERC20 _token,
-        string memory name_,
-        string memory symbol_
-    ) ERC721(name_, symbol_) Ownable(msg.sender) {
-        if (address(_token) == address(0)) {
+    /// @notice Khởi tạo contract upgradable, thay cho constructor.
+    /// @param token_ Địa chỉ ERC20 dùng làm stablecoin gửi tiết kiệm.
+    /// @param certificate_ Địa chỉ ERC721 certificate contract.
+    /// @param owner_ Owner của SavingBank core.
+    function initialize(
+        address token_,
+        address certificate_,
+        address owner_
+    ) external initializer {
+        if (token_ == address(0) || certificate_ == address(0) || owner_ == address(0)) {
             revert ZeroAddress();
         }
-        token = _token;
-        feeReceiver = msg.sender;
+
+        __Ownable_init(owner_);
+        __Pausable_init();
+        __ReentrancyGuard_init();
+
+        token = IERC20(token_);
+        certificate = IDepositCertificate(certificate_);
+        feeReceiver = owner_;
+
+        nextPlanId = 1;
+        nextDepositId = 1;
     }
 
     // ---------------------------------------------------------------------
@@ -251,8 +228,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
         if (amount == 0) {
             revert InvalidAmount();
         }
-        bool ok = token.transferFrom(msg.sender, address(this), amount);
-        require(ok, "TRANSFER_FROM_FAILED");
+        token.safeTransferFrom(msg.sender, address(this), amount);
         vaultBalance += amount;
         emit VaultFunded(msg.sender, amount);
     }
@@ -266,8 +242,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             revert InsufficientVault();
         }
         vaultBalance -= amount;
-        bool ok = token.transfer(msg.sender, amount);
-        require(ok, "TRANSFER_FAILED");
+        token.safeTransfer(msg.sender, amount);
         emit VaultWithdrawn(msg.sender, amount);
     }
 
@@ -314,8 +289,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             revert AlreadyHasActiveDeposit();
         }
 
-        bool ok = token.transferFrom(msg.sender, address(this), amount);
-        require(ok, "TRANSFER_FROM_FAILED");
+        token.safeTransferFrom(msg.sender, address(this), amount);
 
         depositId = nextDepositId++;
 
@@ -335,7 +309,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             status: DepositStatus.Active
         });
 
-        _safeMint(msg.sender, depositId);
+        certificate.mintCertificate(msg.sender, depositId);
 
         activeDepositOf[msg.sender] = depositId;
 
@@ -371,7 +345,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
         vaultBalance -= interest;
         dep.status = DepositStatus.Withdrawn;
 
-        _burn(depositId);
+        certificate.burnCertificate(depositId);
 
         address owner_ = dep.owner;
         uint256 principal = dep.principal;
@@ -381,8 +355,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             activeDepositOf[owner_] = 0;
         }
 
-        bool ok = token.transfer(owner_, payout);
-        require(ok, "TRANSFER_FAILED");
+        token.safeTransfer(owner_, payout);
 
         emit Withdrawn(depositId, owner_, principal, interest, false);
     }
@@ -410,16 +383,14 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
         uint256 userAmount = dep.principal - penalty;
 
         dep.status = DepositStatus.EarlyWithdrawn;
-        _burn(depositId);
+        certificate.burnCertificate(depositId);
 
         address owner_ = dep.owner;
-        bool ok = token.transfer(owner_, userAmount);
-        require(ok, "TRANSFER_FAILED");
+        token.safeTransfer(owner_, userAmount);
 
         if (penalty > 0) {
             if (feeReceiver != address(0)) {
-                ok = token.transfer(feeReceiver, penalty);
-                require(ok, "TRANSFER_FAILED");
+                token.safeTransfer(feeReceiver, penalty);
             } else {
                 // keep penalty inside contract and treat as part of vault
                 vaultBalance += penalty;
@@ -480,7 +451,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
         }
 
         dep.status = DepositStatus.Renewed;
-        _burn(depositId);
+        certificate.burnCertificate(depositId);
 
         address owner_ = dep.owner;
 
@@ -501,7 +472,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             status: DepositStatus.Active
         });
 
-        _safeMint(owner_, newDepositId);
+        certificate.mintCertificate(owner_, newDepositId);
 
         activeDepositOf[owner_] = newDepositId;
 
@@ -527,7 +498,7 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
             revert InvalidDeposit();
         }
         if (msg.sender != dep.owner) {
-            revert NotDepositOwnerOrApproved();
+            revert NotDepositOwner();
         }
     }
 
@@ -544,5 +515,4 @@ contract SavingBank is ERC721, Ownable, Pausable, ReentrancyGuard {
         // interest = principal * aprBps * tenorSeconds / (365 days * 10000)
         return (principal * aprBps * tenorSeconds) / (yearInSeconds * 10000);
     }
-
 }

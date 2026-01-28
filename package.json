@@ -19,11 +19,13 @@
   },
   "homepage": "https://github.com/DangVuDev/AC_CAPSTON_SAVE_BANKING#readme",
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0"
+    "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.0.0"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "hardhat": "^2.22.3",
+    "@openzeppelin/hardhat-upgrades": "^3.0.0",
     "ts-node": "^10.9.2"
   }
 }
