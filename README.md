@@ -1,4 +1,4 @@
-# AC Capstone - SavingBank (Time-Locked Savings with NFT Certificates)
+# AC Capstone - SavingBank
 
 [![Hardhat](https://img.shields.io/badge/Built%20with-Hardhat-FFDB1C.svg)](https://hardhat.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-^0.8.24-blue.svg)](https://soliditylang.org/)
@@ -7,6 +7,7 @@
 
 
 **Author:** DangVuDev
+
 **Project Type:** Educational Capstone & Production-Ready Savings Product
 
 ---
