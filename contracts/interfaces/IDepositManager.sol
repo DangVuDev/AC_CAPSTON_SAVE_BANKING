@@ -38,7 +38,7 @@ interface IDepositManager {
         external
         returns (uint256 newDepositId);
 
-    function getMyActiveDepositId() external view returns (uint256);
+    function getMyActiveDepositId() external view returns (uint256[] memory);
 
-    function getActiveDepositId(address user) external view returns (uint256);
+    function getActiveDepositId(address user) external view returns (uint256[] memory);
 }
