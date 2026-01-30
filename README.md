@@ -110,6 +110,8 @@ graph TD
     classDef contract fill:#f0f4f8,stroke:#333,stroke-width:2px
     class SavingBank,Registry,Certificate,Vault,Factory contract
 
+```
+
 
 
 
