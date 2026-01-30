@@ -15,10 +15,10 @@ contract DepositCertificateUpgradeable is
     OwnableUpgradeable,
     IDepositCertificate
 {
-    /// @notice Địa chỉ SavingBank core được phép mint/burn.
-    address public savingBankCore;
+    /// @notice Địa chỉ SavingBank executable    được phép mint/burn.
+    address public savingBankExecutable;
 
-    error NotSavingBankCore();
+    error NotSavingBankExecutable();
     error ZeroAddress();
 
     /// @dev Initializer thay cho constructor.
@@ -34,18 +34,18 @@ contract DepositCertificateUpgradeable is
         __Ownable_init(owner_);
     }
 
-    /// @notice Thiết lập địa chỉ SavingBank core được phép mint/burn.
+    /// @notice Thiết lập địa chỉ SavingBank executable được phép mint/burn.
     /// Có thể set một lần sau khi deploy; nếu muốn đổi cần review security.
-    function setSavingBankCore(address core) external onlyOwner {
-        if (core == address(0)) {
+    function setBankExecutable(address executable) external onlyOwner {
+        if (executable == address(0)) {
             revert ZeroAddress();
         }
-        savingBankCore = core;
+        savingBankExecutable = executable;
     }
 
-    modifier onlySavingBankCore() {
-        if (msg.sender != savingBankCore) {
-            revert NotSavingBankCore();
+    modifier onlySavingBankExecutable() {
+        if (msg.sender != savingBankExecutable) {
+            revert NotSavingBankExecutable();
         }
         _;
     }
@@ -54,7 +54,7 @@ contract DepositCertificateUpgradeable is
     function mintCertificate(address to, uint256 depositId)
         external
         override
-        onlySavingBankCore
+        onlySavingBankExecutable
     {
         _safeMint(to, depositId);
     }
@@ -63,7 +63,7 @@ contract DepositCertificateUpgradeable is
     function burnCertificate(uint256 depositId)
         external
         override
-        onlySavingBankCore
+        onlySavingBankExecutable
     {
         _burn(depositId);
     }

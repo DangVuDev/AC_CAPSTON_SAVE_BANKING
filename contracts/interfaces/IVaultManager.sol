@@ -13,8 +13,7 @@ interface IVaultManager {
     function withdrawVault(uint256 amount) external;
 
     function setFeeReceiver(address newFeeReceiver) external;
+    function getFeeReceiver() external view returns (address);
 
-    function feeReceiver() external view returns (address);
-
-    function vaultBalance() external view returns (uint256);
+    function getVaultBalance() external view returns (uint256);
 }

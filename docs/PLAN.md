@@ -21,7 +21,7 @@
 
 Đề xuất chia thành các phần sau:
 
-1. **SavingBankCoreUpgradeable (Upgradable)**
+1. **SavingBankUpgradeable (Upgradable)**
   - Contract upgradable (dùng `Initializable`, `OwnableUpgradeable`, `PausableUpgradeable`, `ReentrancyGuardUpgradeable`).
   - Chứa business logic chính:
     - Quản lý `SavingPlan` (create/update, enable/disable).
@@ -56,7 +56,7 @@
   - Factory triển khai cho mỗi ERC20 token một bộ contract:
     - `DepositRegistry` (state holder, non-upgradable).
     - `DepositCertificateUpgradeable` (ERC721).
-    - `SavingBankCoreUpgradeable` (upgradable core).
+    - `SavingBankUpgradeable` (upgradable core).
   - Lưu metadata các instance và transfer ownership thế hệ đầu tiên cho creator.
   - Khi cần, có thể deploy **core mới** trỏ tới cùng `DepositRegistry` + `DepositCertificate` để khắc phục bug, không mất dữ liệu.
 
@@ -85,7 +85,7 @@
 ### 2.3. Upgradable Pattern & Data Safety / Mô hình nâng cấp & An toàn dữ liệu
 
 - Sử dụng **OpenZeppelin Upgrades** cho core:
-  - `SavingBankCoreUpgradeable` dùng `initializer` thay cho constructor.
+  - `SavingBankUpgradeable` dùng `initializer` thay cho constructor.
   - Deploy qua proxy (Transparent Proxy hoặc UUPS).
 - **DepositRegistry & DepositCertificate**:
   - Ưu tiên thiết kế **non-upgradable**, đơn giản, code ít thay đổi để state an toàn lâu dài.
@@ -120,14 +120,14 @@
 - Rà soát lại requirement & USECASE để chốt behavior (không đổi business logic hiện tại, chỉ refactor kiến trúc).
 - Thiết kế chi tiết contract:
   - Khai báo interface `IDepositCertificate`, `IDepositRegistry`.
-  - Thiết kế storage layout cho `SavingBankCoreUpgradeable` (plans, vaultBalance, feeReceiver, reference tới registry & certificate).
+  - Thiết kế storage layout cho `SavingBankUpgradeable` (plans, vaultBalance, feeReceiver, reference tới registry & certificate).
   - Thiết kế storage layout cho `DepositRegistry` (deposits, activeDepositOf, nextDepositId) – ưu tiên non-upgradable.
   - Thiết kế storage layout cho `DepositCertificateUpgradeable` (ERC721 + savingBankCore / BANK_ROLE).
 - Thiết lập hạ tầng upgradable:
   - Cài `@openzeppelin/contracts-upgradeable` và plugin Hardhat upgrades.
   - Tạo file cấu hình / script deploy cơ bản cho proxy.
 - Tạo skeleton contract:
-  - `contracts/SavingBankCoreUpgradeable.sol` với các struct plan, vault, event, storage, `initialize`.
+  - `contracts/SavingBankUpgradeable.sol` với các struct plan, vault, event, storage, `initialize`.
   - `contracts/DepositRegistry.sol` với struct `DepositInfo`, mapping deposits, activeDepositOf, `BANK_ROLE`.
   - `contracts/DepositCertificateUpgradeable.sol` với ERC721 upgradable, `setSavingBankCore`.
   - Interfaces `contracts/interfaces/IDepositCertificate.sol`, `contracts/interfaces/IDepositRegistry.sol`.
@@ -143,7 +143,7 @@
 
 **Mục tiêu:** Hoàn thiện logic, đảm bảo compile & test cơ bản pass.
 
-- Implement đầy đủ logic trong `SavingBankCoreUpgradeable`:
+- Implement đầy đủ logic trong `SavingBankUpgradeable`:
   - `createPlan`, `updatePlan` (kế thừa từ version hiện tại, điều chỉnh cho upgradable).
   - `openDeposit`, `withdrawAtMaturity`, `earlyWithdraw`, `renewDeposit` giữ nguyên công thức, **nhưng state deposit đọc/ghi qua `IDepositRegistry`**.
   - `fundVault`, `withdrawVault`, `setFeeReceiver`, `pause`, `unpause`.
@@ -155,7 +155,7 @@
   - ERC721Upgradeable, `initialize(name, symbol, owner)`.
   - Hàm `setSavingBankCore`, `mintCertificate`, `burnCertificate` như hiện tại.
 - Điều chỉnh SavingBankUpgradeableFactory:
-  - Cho mỗi ERC20 token, deploy `DepositRegistry` + `DepositCertificateUpgradeable` + (proxy) `SavingBankCoreUpgradeable`.
+  - Cho mỗi ERC20 token, deploy `DepositRegistry` + `DepositCertificateUpgradeable` + (proxy) `SavingBankUpgradeable`.
   - Gọi `initialize` tương ứng, set owner/roles cho creator, wiring registry + certificate vào core.
 - Viết/điều chỉnh test:
   - Test mở deposit, tất toán, rút trước hạn, gia hạn với kiến trúc mới (core + registry + NFT).

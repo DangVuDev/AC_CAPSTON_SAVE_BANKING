@@ -8,18 +8,18 @@ contract DepositRegistry is IDepositRegistry, Ownable {
     uint256 public _nextDepositId = 1;
 
     mapping(uint256 => DepositInfo) private _deposits;
-    mapping(address => bool) public isBankCore;
+    mapping(address => bool) public isBankExecutable;
 
     // Hỗ trợ nhiều sổ active cho 1 user
     mapping(address => uint256[]) private _activeDepositsOf;
 
-    error NotAuthorizedCore();
+    error NotAuthorizedExecutable();
     error InvalidOwner();
     error InvalidDeposit();
     error DepositNotActive();
 
-    modifier onlyCore() {
-        if (!isBankCore[msg.sender]) revert NotAuthorizedCore();
+    modifier onlyExecutable() {
+        if (!isBankExecutable[msg.sender]) revert NotAuthorizedExecutable();
         _;
     }
 
@@ -29,8 +29,8 @@ contract DepositRegistry is IDepositRegistry, Ownable {
     // Admin
     // ---------------------------------------------------------------------
 
-    function setBankCore(address core, bool allowed) external onlyOwner {
-        isBankCore[core] = allowed;
+    function setBankExecutable(address executable, bool allowed) external onlyOwner {
+        isBankExecutable[executable] = allowed;
     }
 
     // ---------------------------------------------------------------------
@@ -54,7 +54,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
     }
 
     // ---------------------------------------------------------------------
-    // Core write functions - Implement đầy đủ
+    // Executable write functions - Implement đầy đủ
     // ---------------------------------------------------------------------
 
     function createDeposit(
@@ -66,7 +66,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
         uint32 earlyWithdrawPenaltyBps,
         uint64 startAt,
         uint64 maturityAt
-    ) external override onlyCore returns (uint256 depositId) {
+    ) external override onlyExecutable returns (uint256 depositId) {
         if (owner == address(0)) revert InvalidOwner();
 
         depositId = _nextDepositId++;
@@ -87,7 +87,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
         _activeDepositsOf[owner].push(depositId);
     }
 
-    function markWithdrawn(uint256 depositId) external override onlyCore {
+    function markWithdrawn(uint256 depositId) external override onlyExecutable {
         DepositInfo storage dep = _deposits[depositId];
         if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
         if (dep.status != DepositStatus.Active) revert DepositNotActive();
@@ -96,7 +96,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
         _removeFromActive(dep.owner, depositId);
     }
 
-    function markEarlyWithdrawn(uint256 depositId) external override onlyCore {
+    function markEarlyWithdrawn(uint256 depositId) external override onlyExecutable {
         DepositInfo storage dep = _deposits[depositId];
         if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
         if (dep.status != DepositStatus.Active) revert DepositNotActive();
@@ -105,7 +105,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
         _removeFromActive(dep.owner, depositId);
     }
 
-    function markRenewed(uint256 depositId) external override onlyCore {
+    function markRenewed(uint256 depositId) external override onlyExecutable {
         DepositInfo storage dep = _deposits[depositId];
         if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
         if (dep.status != DepositStatus.Active) revert DepositNotActive();
@@ -123,7 +123,7 @@ contract DepositRegistry is IDepositRegistry, Ownable {
         uint32 earlyWithdrawPenaltyBps,
         uint64 startAt,
         uint64 maturityAt
-    ) external override onlyCore returns (uint256 newDepositId) {
+    ) external override onlyExecutable returns (uint256 newDepositId) {
         if (owner == address(0)) revert InvalidOwner();
 
         newDepositId = _nextDepositId++;

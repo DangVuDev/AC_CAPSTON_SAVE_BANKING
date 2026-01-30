@@ -68,10 +68,80 @@ npx hardhat deploy --network sepolia
 
 Core components:
 
-- `SavingBankCoreUpgradeable` — upgradable core (plans, vault, open/withdraw/renew logic)
+- `SavingBankUpgradeable` — upgradable core (plans, vault, open/withdraw/renew logic)
 - `DepositRegistry` — non-upgradable state holder for deposits
 - `DepositCertificateUpgradeable` — ERC721 certificate (tokenId == depositId)
 - `SavingBankUpgradeableFactory` — deploys wired instances per ERC20
+
+
+graph TD
+    subgraph Wallets [Wallet Layer]
+        User([User Wallet])
+        Admin([Admin Wallet])
+    end
+
+    subgraph UI [Frontend Layer]
+        S_UI[SavingBank UI<br/>React + Wagmi]
+        A_UI[Admin UI<br/>React + Wagmi]
+    end
+
+    subgraph Core [Smart Contract Logic]
+        SBU[[SavingBankUpgradeable]]
+    end
+
+    subgraph Storage [Data & Asset Storage]
+        DR[(DepositRegistry<br/>Metadata & States)]
+        DC([DepositCertificate<br/>ERC721 NFT])
+        Vault{Vault<br/>Assets Holder}
+    end
+
+    %% Flow Admin
+    Admin -->|Manage Plans/Vault/Pause| A_UI
+    A_UI -->|Write/Read| SBU
+
+    %% Flow User
+    User -->|Approve + Call| S_UI
+    S_UI -->|Write/Read| SBU
+
+    %% Logic Internal
+    SBU -->|createDeposit| DR
+    SBU -->|mint/burn| DC
+    SBU -->|fund/withdraw| Vault
+
+    %% Style
+    style SBU fill:#f96,stroke:#333,stroke-width:2px
+    style Vault fill:#3cf,stroke:#333,stroke-width:2px
+    style DC fill:#bbf,stroke:#333
+    style DR fill:#dfd,stroke:#333
+
+
+
+
+sequenceDiagram
+    autonumber
+    participant U as User Wallet
+    participant SBU as SavingBank UI/Contract
+    participant V as Vault
+    participant DR as DepositRegistry
+    participant DC as DepositCertificate (NFT)
+
+    Note over U, SBU: Giai đoạn 1: Approve
+    U->>SBU: Approve USDC (allowance)
+
+    Note over U, V: Giai đoạn 2: openDeposit
+    U->>SBU: Gọi openDeposit(planId, amount)
+    SBU->>SBU: 1. safeTransferFrom (Pull USDC từ User)
+    SBU->>SBU: 2. safeApprove (Cho phép Vault rút tiền)
+    SBU->>V: 3. fund(amount)
+    V->>SBU: Pull USDC từ Contract vào Vault storage
+    
+    Note over SBU, DC: Giai đoạn 3: Minting & Recording
+    SBU->>DR: createDeposit (Lưu metadata)
+    SBU->>DC: mint NFT (Giao chứng chỉ cho User)
+    SBU-->>U: Hoàn tất (NFT + Active Deposit)
+
+
+
 
 For details see [docs/PLAN.md](docs/PLAN.md).
 

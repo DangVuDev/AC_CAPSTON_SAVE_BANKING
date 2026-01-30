@@ -5,6 +5,6 @@ import {ISavingPlanManager} from "./ISavingPlanManager.sol";
 import {IVaultManager} from "./IVaultManager.sol";
 import {IDepositManager} from "./IDepositManager.sol";
 
-/// @title ISavingBankCore
-/// @notice Interface tổng hợp cho SavingBank core, tách nhỏ theo từng nhóm nghiệp vụ.
-interface ISavingBankCore is ISavingPlanManager, IVaultManager, IDepositManager {}
+/// @title ISavingBankUpgradeable
+/// @notice Interface tổng hợp cho SavingBank bank, tách nhỏ theo từng nhóm nghiệp vụ.
+interface ISavingBankUpgradeable is ISavingPlanManager, IVaultManager, IDepositManager {}

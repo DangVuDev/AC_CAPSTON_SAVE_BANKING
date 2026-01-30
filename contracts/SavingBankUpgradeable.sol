@@ -9,17 +9,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IDepositCertificate} from "./interfaces/IDepositCertificate.sol";
 import {IDepositRegistry} from "./interfaces/IDepositRegistry.sol";
-import {ISavingBankCore} from "./interfaces/ISavingBankCore.sol";
+import {ISavingBankUpgradeable} from "./interfaces/ISavingBankUpgradeable.sol";
+import {Vault} from "./Vault.sol"; // Import contract Vault riêng
 
 /// @title SavingBankUpgradeable
-/// @notice Core logic sản phẩm tiết kiệm có kỳ hạn, tách riêng khỏi ERC721 certificate.
-/// Implement các interface nhỏ: ISavingPlanManager, IVaultManager, IDepositManager thông qua ISavingBankCore.
+/// @notice Core logic sản phẩm tiết kiệm có kỳ hạn, tách riêng vault ra contract Vault.
+/// Chỉ owner và Vault mới được phép nạp/rút tiền lãi.
 contract SavingBankUpgradeable is
     Initializable,
     OwnableUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
-    ISavingBankCore
+    ISavingBankUpgradeable
 {
     using SafeERC20 for IERC20;
 
@@ -32,12 +33,10 @@ contract SavingBankUpgradeable is
     IERC20 public token;
     IDepositRegistry public registry;
     IDepositCertificate public certificate;
+    Vault public vault; // ← Vault riêng thay vì uint256 vaultBalance
 
     /// @notice Address receiving early-withdrawal penalties (can be zero address => penalties stay in vault).
     address public feeReceiver;
-
-    /// @notice Balance of the liquidity vault used to pay interest.
-    uint256 public vaultBalance;
 
     uint256 public nextPlanId;
 
@@ -52,9 +51,7 @@ contract SavingBankUpgradeable is
     }
 
     mapping(uint256 => SavingPlan) public plans;
-    // Deposit state được lưu trữ trong DepositRegistry
 
-   
     // ---------------------------------------------------------------------
     // Errors
     // ---------------------------------------------------------------------
@@ -70,14 +67,13 @@ contract SavingBankUpgradeable is
     error NotMatured();
     error AlreadyMatured();
     error InsufficientVault();
-    error AlreadyHasActiveDeposit();
 
     // ---------------------------------------------------------------------
     // Initializer
     // ---------------------------------------------------------------------
 
-    /// @notice Khởi tạo contract upgradable, thay cho constructor.
-    /// @param token_ Địa chỉ ERC20 dùng làm stablecoin gửi tiết kiệm.
+    /// @notice Khởi tạo contract upgradable.
+    /// @param token_ Địa chỉ ERC20 dùng làm stablecoin.
     /// @param registry_ Địa chỉ DepositRegistry lưu state deposit.
     /// @param certificate_ Địa chỉ ERC721 certificate contract.
     /// @param owner_ Owner của SavingBank core.
@@ -98,6 +94,10 @@ contract SavingBankUpgradeable is
         token = IERC20(token_);
         registry = IDepositRegistry(registry_);
         certificate = IDepositCertificate(certificate_);
+
+        Vault vault_ = new Vault(address(token), address(this), owner_);
+        vault = Vault(vault_);
+
         feeReceiver = owner_;
 
         nextPlanId = 1;
@@ -115,18 +115,10 @@ contract SavingBankUpgradeable is
         uint32 earlyWithdrawPenaltyBps,
         bool enabled
     ) external override onlyOwner {
-        if (tenorDays == 0) {
-            revert InvalidParameters();
-        }
-        if (aprBps > MAX_APR_BPS) {
-            revert InvalidParameters();
-        }
-        if (earlyWithdrawPenaltyBps > MAX_PENALTY_BPS) {
-            revert InvalidParameters();
-        }
-        if (maxDeposit != 0 && maxDeposit < minDeposit) {
-            revert InvalidParameters();
-        }
+        if (tenorDays == 0) revert InvalidParameters();
+        if (aprBps > MAX_APR_BPS) revert InvalidParameters();
+        if (earlyWithdrawPenaltyBps > MAX_PENALTY_BPS) revert InvalidParameters();
+        if (maxDeposit != 0 && maxDeposit < minDeposit) revert InvalidParameters();
 
         uint256 planId = nextPlanId++;
 
@@ -161,21 +153,12 @@ contract SavingBankUpgradeable is
         bool enabled
     ) external override onlyOwner {
         SavingPlan storage plan = plans[planId];
-        if (plan.id == 0) {
-            revert InvalidPlan();
-        }
-        if (tenorDays == 0) {
-            revert InvalidParameters();
-        }
-        if (aprBps > MAX_APR_BPS) {
-            revert InvalidParameters();
-        }
-        if (earlyWithdrawPenaltyBps > MAX_PENALTY_BPS) {
-            revert InvalidParameters();
-        }
-        if (maxDeposit != 0 && maxDeposit < minDeposit) {
-            revert InvalidParameters();
-        }
+        if (plan.id == 0) revert InvalidPlan();
+
+        if (tenorDays == 0) revert InvalidParameters();
+        if (aprBps > MAX_APR_BPS) revert InvalidParameters();
+        if (earlyWithdrawPenaltyBps > MAX_PENALTY_BPS) revert InvalidParameters();
+        if (maxDeposit != 0 && maxDeposit < minDeposit) revert InvalidParameters();
 
         plan.tenorDays = tenorDays;
         plan.aprBps = aprBps;
@@ -204,27 +187,27 @@ contract SavingBankUpgradeable is
         emit FeeReceiverUpdated(newFeeReceiver);
     }
 
-    /// @notice Fund the interest vault; tokens must be approved beforehand.
+    /// @notice Nạp tiền vào vault (chỉ owner)
     function fundVault(uint256 amount) external override onlyOwner {
-        if (amount == 0) {
-            revert InvalidAmount();
-        }
-        token.safeTransferFrom(msg.sender, address(this), amount);
-        vaultBalance += amount;
+        if (amount == 0) revert InvalidAmount();
+        token.safeTransferFrom(msg.sender, address(vault), amount);
+        vault.fund(amount);
         emit VaultFunded(msg.sender, amount);
     }
 
-    /// @notice Withdraw from the interest vault (cannot withdraw user principals).
+    /// @notice Rút tiền từ vault (chỉ owner)
     function withdrawVault(uint256 amount) external override onlyOwner {
-        if (amount == 0) {
-            revert InvalidAmount();
-        }
-        if (amount > vaultBalance) {
-            revert InsufficientVault();
-        }
-        vaultBalance -= amount;
-        token.safeTransfer(msg.sender, amount);
+        if (amount == 0) revert InvalidAmount();
+        vault.withdrawTo(amount, msg.sender);
         emit VaultWithdrawn(msg.sender, amount);
+    }
+
+    function getFeeReceiver() external view override returns (address) {
+        return feeReceiver;
+    }
+
+    function getVaultBalance() external view override returns (uint256) {
+        return vault.getVaultBalance();
     }
 
     // ---------------------------------------------------------------------
@@ -240,59 +223,45 @@ contract SavingBankUpgradeable is
     }
 
     // ---------------------------------------------------------------------
-// User actions
-// ---------------------------------------------------------------------
+    // User actions
+    // ---------------------------------------------------------------------
 
-function openDeposit(uint256 planId, uint256 amount)
-    external
-    whenNotPaused
-    nonReentrant
-    override
-    returns (uint256 depositId)
-{
-    SavingPlan storage plan = plans[planId];
-    if (plan.id == 0) {
-        revert InvalidPlan();
+    function openDeposit(uint256 planId, uint256 amount)
+        external
+        whenNotPaused
+        nonReentrant
+        override
+        returns (uint256 depositId)
+    {
+        SavingPlan storage plan = plans[planId];
+        if (plan.id == 0) revert InvalidPlan();
+        if (!plan.enabled) revert PlanDisabled();
+        if (amount == 0) revert InvalidAmount();
+        if (amount < plan.minDeposit) revert InvalidAmount();
+        if (plan.maxDeposit != 0 && amount > plan.maxDeposit) revert InvalidAmount();
+
+        // 1. Chuyển tiền từ user vào SavingBank (transit ngắn)
+        token.safeTransferFrom(address(this), address(vault), amount);
+
+        uint64 startAt = uint64(block.timestamp);
+        uint64 maturityAt = uint64(block.timestamp + uint64(plan.tenorDays) * 1 days);
+
+        depositId = registry.createDeposit(
+            msg.sender,
+            planId,
+            amount,
+            plan.tenorDays,
+            plan.aprBps,
+            plan.earlyWithdrawPenaltyBps,
+            startAt,
+            maturityAt
+        );
+
+        certificate.mintCertificate(msg.sender, depositId);
+
+        emit DepositOpened(depositId, msg.sender, planId, amount, maturityAt);
     }
-    if (!plan.enabled) {
-        revert PlanDisabled();
-    }
-    if (amount == 0) {
-        revert InvalidAmount();
-    }
-    if (amount < plan.minDeposit) {
-        revert InvalidAmount();
-    }
-    if (plan.maxDeposit != 0 && amount > plan.maxDeposit) {
-        revert InvalidAmount();
-    }
 
-    // BỎ CHECK NÀY để cho phép mở nhiều sổ cùng lúc
-    // if (registry.getActiveDepositId(msg.sender) != 0) {
-    //     revert AlreadyHasActiveDeposit();
-    // }
-
-    token.safeTransferFrom(msg.sender, address(this), amount);
-
-    uint64 startAt = uint64(block.timestamp);
-    uint64 maturityAt = uint64(block.timestamp + uint64(plan.tenorDays) * 1 days);
-    depositId = registry.createDeposit(
-        msg.sender,
-        planId,
-        amount,
-        plan.tenorDays,
-        plan.aprBps,
-        plan.earlyWithdrawPenaltyBps,
-        startAt,
-        maturityAt
-    );
-
-    certificate.mintCertificate(msg.sender, depositId);
-
-    emit DepositOpened(depositId, msg.sender, planId, amount, maturityAt);
-}
-
-    /// @notice Withdraw at or after maturity, receiving principal + interest.
     function withdrawAtMaturity(uint256 depositId)
         external
         override
@@ -300,45 +269,22 @@ function openDeposit(uint256 planId, uint256 amount)
         nonReentrant
     {
         IDepositRegistry.DepositInfo memory dep = registry.deposits(depositId);
-        if (dep.id == 0 || dep.owner == address(0)) {
-            revert InvalidDeposit();
-        }
-        if (msg.sender != dep.owner) {
-            revert NotDepositOwner();
-        }
+        if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
+        if (msg.sender != dep.owner) revert NotDepositOwner();
+        if (dep.status != IDepositRegistry.DepositStatus.Active) revert DepositNotActive();
+        if (block.timestamp < dep.maturityAt) revert NotMatured();
 
-        if (dep.status != IDepositRegistry.DepositStatus.Active) {
-            revert DepositNotActive();
-        }
-        if (block.timestamp < dep.maturityAt) {
-            revert NotMatured();
-        }
+        uint256 interest = _calculateInterest(dep.principal, dep.aprBps, dep.tenorDays);
 
-        uint256 interest = _calculateInterest(
-            dep.principal,
-            dep.aprBps,
-            dep.tenorDays
-        );
-
-        if (interest > vaultBalance) {
-            revert InsufficientVault();
-        }
-
-        vaultBalance -= interest;
+        // Vault trả thẳng principal + interest về user (không transit qua SavingBank)
+        vault.withdrawTo(dep.principal + interest, msg.sender);
 
         registry.markWithdrawn(depositId);
         certificate.burnCertificate(depositId);
 
-        address owner_ = dep.owner;
-        uint256 principal = dep.principal;
-        uint256 payout = principal + interest;
-
-        token.safeTransfer(owner_, payout);
-
-        emit Withdrawn(depositId, owner_, principal, interest, false);
+        emit Withdrawn(depositId, msg.sender, dep.principal, interest, false);
     }
 
-    /// @notice Early withdraw before maturity, receiving principal minus penalty.
     function earlyWithdraw(uint256 depositId)
         external
         override
@@ -346,45 +292,33 @@ function openDeposit(uint256 planId, uint256 amount)
         nonReentrant
     {
         IDepositRegistry.DepositInfo memory dep = registry.deposits(depositId);
-        if (dep.id == 0 || dep.owner == address(0)) {
-            revert InvalidDeposit();
-        }
-        if (msg.sender != dep.owner) {
-            revert NotDepositOwner();
-        }
-
-        if (dep.status != IDepositRegistry.DepositStatus.Active) {
-            revert DepositNotActive();
-        }
-        if (block.timestamp >= dep.maturityAt) {
-            revert AlreadyMatured();
-        }
+        if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
+        if (msg.sender != dep.owner) revert NotDepositOwner();
+        if (dep.status != IDepositRegistry.DepositStatus.Active) revert DepositNotActive();
+        if (block.timestamp >= dep.maturityAt) revert AlreadyMatured();
 
         uint256 penalty = (dep.principal * dep.earlyWithdrawPenaltyBps) / 10000;
-        if (penalty > dep.principal) {
-            penalty = dep.principal;
-        }
+        if (penalty > dep.principal) penalty = dep.principal;
+
         uint256 userAmount = dep.principal - penalty;
+
+        // Vault trả thẳng userAmount về user
+        vault.withdrawTo(userAmount, msg.sender);
+
+        // Phạt (penalty) giữ ở Vault hoặc chuyển feeReceiver
+        if (penalty > 0) {
+            if (feeReceiver != address(0)) {
+                vault.withdrawTo(penalty, feeReceiver);
+            }
+            // Nếu không có feeReceiver, penalty vẫn ở Vault (tăng vaultBalance)
+        }
 
         registry.markEarlyWithdrawn(depositId);
         certificate.burnCertificate(depositId);
 
-        address owner_ = dep.owner;
-        token.safeTransfer(owner_, userAmount);
-
-        if (penalty > 0) {
-            if (feeReceiver != address(0)) {
-                token.safeTransfer(feeReceiver, penalty);
-            } else {
-                // keep penalty inside contract and treat as part of vault
-                vaultBalance += penalty;
-            }
-        }
-
-        emit Withdrawn(depositId, owner_, dep.principal, 0, true);
+        emit Withdrawn(depositId, msg.sender, dep.principal, 0, true);
     }
 
-    /// @notice Renew a matured deposit into a new plan, rolling over principal + interest.
     function renewDeposit(uint256 depositId, uint256 newPlanId)
         external
         whenNotPaused
@@ -393,52 +327,26 @@ function openDeposit(uint256 planId, uint256 amount)
         returns (uint256 newDepositId)
     {
         IDepositRegistry.DepositInfo memory dep = registry.deposits(depositId);
-        if (dep.id == 0 || dep.owner == address(0)) {
-            revert InvalidDeposit();
-        }
-        if (msg.sender != dep.owner) {
-            revert NotDepositOwner();
-        }
-
-        if (dep.status != IDepositRegistry.DepositStatus.Active) {
-            revert DepositNotActive();
-        }
-        if (block.timestamp < dep.maturityAt) {
-            revert NotMatured();
-        }
+        if (dep.id == 0 || dep.owner == address(0)) revert InvalidDeposit();
+        if (msg.sender != dep.owner) revert NotDepositOwner();
+        if (dep.status != IDepositRegistry.DepositStatus.Active) revert DepositNotActive();
+        if (block.timestamp < dep.maturityAt) revert NotMatured();
 
         SavingPlan storage newPlan = plans[newPlanId];
-        if (newPlan.id == 0) {
-            revert InvalidPlan();
-        }
-        if (!newPlan.enabled) {
-            revert PlanDisabled();
-        }
+        if (newPlan.id == 0) revert InvalidPlan();
+        if (!newPlan.enabled) revert PlanDisabled();
 
-        uint256 interest = _calculateInterest(
-            dep.principal,
-            dep.aprBps,
-            dep.tenorDays
-        );
-
-        if (interest > vaultBalance) {
-            revert InsufficientVault();
-        }
-
-        vaultBalance -= interest;
+        uint256 interest = _calculateInterest(dep.principal, dep.aprBps, dep.tenorDays);
 
         uint256 newPrincipal = dep.principal + interest;
 
-        if (newPrincipal < newPlan.minDeposit) {
-            revert InvalidAmount();
-        }
-        if (newPlan.maxDeposit != 0 && newPrincipal > newPlan.maxDeposit) {
-            revert InvalidAmount();
-        }
+        if (newPrincipal < newPlan.minDeposit) revert InvalidAmount();
+        if (newPlan.maxDeposit != 0 && newPrincipal > newPlan.maxDeposit) revert InvalidAmount();
 
         address owner_ = dep.owner;
         uint64 startAt = uint64(block.timestamp);
         uint64 maturityAt = uint64(block.timestamp + uint64(newPlan.tenorDays) * 1 days);
+
         registry.markRenewed(depositId);
         certificate.burnCertificate(depositId);
 
@@ -458,29 +366,24 @@ function openDeposit(uint256 planId, uint256 amount)
         emit Renewed(depositId, newDepositId, newPrincipal);
     }
 
-   /// @notice Get all active deposit IDs of the caller (empty array if none).
-    /// @return uint256[] memory Array of active deposit IDs
-    function getMyActiveDepositId() external view  override returns (uint256[] memory) {
+    /// @notice Get all active deposit IDs of the caller (empty array if none).
+    function getMyActiveDepositId() external view override returns (uint256[] memory) {
         return registry.getActiveDepositId(msg.sender);
     }
 
     /// @notice Get all active deposit IDs of a user (empty array if none).
-    /// @param user The address to query
-    /// @return uint256[] memory Array of active deposit IDs
     function getActiveDepositId(address user) external view override returns (uint256[] memory) {
         return registry.getActiveDepositId(user);
     }
+
     function _calculateInterest(
         uint256 principal,
         uint32 aprBps,
         uint32 tenorDays
     ) internal pure returns (uint256) {
-        if (principal == 0 || aprBps == 0 || tenorDays == 0) {
-            return 0;
-        }
+        if (principal == 0 || aprBps == 0 || tenorDays == 0) return 0;
         uint256 tenorSeconds = uint256(tenorDays) * 1 days;
         uint256 yearInSeconds = 365 days;
-        // interest = principal * aprBps * tenorSeconds / (365 days * 10000)
         return (principal * aprBps * tenorSeconds) / (yearInSeconds * 10000);
     }
 }

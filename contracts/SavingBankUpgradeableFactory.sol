@@ -14,29 +14,29 @@ import {DepositCertificateUpgradeable} from "./DepositCertificateUpgradeable.sol
     }
 
 /// @title SavingBankUpgradeableFactory
-/// @notice Factory tạo ra cặp contract SavingBankCoreUpgradeable + DepositCertificateUpgradeable
+/// @notice Factory tạo ra cặp contract SavingBankUpgradeable + DepositCertificateUpgradeable
 /// cho từng ERC20 token, bám sát kiến trúc tách core logic và ERC721 certificate.
 contract SavingBankUpgradeableFactory is Ownable {
     struct BankDeployment {
-        address core;          // SavingBankCoreUpgradeable
+        address bank;          // SavingBankUpgradeable
         address registry;      // DepositRegistry (state holder)
         address certificate;   // DepositCertificateUpgradeable (ERC721)
         address token;         // ERC20 underlying
         address creator;       // Người tạo bank
     }
 
-    /// @notice Danh sách tất cả bank (core + certificate) đã tạo.
+    /// @notice Danh sách tất cả bank (bank + certificate) đã tạo.
     BankDeployment[] public allBanks;
 
-    /// @notice Mapping creator -> danh sách địa chỉ core bank họ tạo.
+    /// @notice Mapping creator -> danh sách địa chỉ bank bank họ tạo.
     mapping(address => address[]) public userBanks;
 
-    /// @notice Đánh dấu một địa chỉ có phải core bank được tạo bởi factory hay không.
-    mapping(address => bool) public isBankCore;
+    /// @notice Đánh dấu một địa chỉ có phải bank bank được tạo bởi factory hay không.
+    mapping(address => bool) public isBankBeCreatedByFactory;
 
     event SavingBankCreated(
         address indexed creator,
-        address indexed core,
+        address indexed bank,
         address indexed registry,
         address certificate,
         address token,
@@ -52,42 +52,46 @@ contract SavingBankUpgradeableFactory is Ownable {
     /// @param token ERC20 token dùng làm stablecoin gửi tiết kiệm.
     /// @param name_ Tên collection ERC721 cho sổ tiết kiệm (NFT certificate).
     /// @param symbol_ Symbol collection ERC721.
-    /// @return core Địa chỉ SavingBankCoreUpgradeable mới.
+    /// @return bank Địa chỉ SavingBankUpgradeable mới.
     /// @return registry Địa chỉ DepositRegistry mới.
     /// @return certificate Địa chỉ DepositCertificateUpgradeable mới.
     function createSavingBank(
         IERC20 token,
         string memory name_,
         string memory symbol_
-    ) external returns (address core, address registry, address certificate) {
+    ) external returns (address bank, address registry, address certificate) {
         require(address(token) != address(0), "TOKEN_ZERO");
 
-        // 1. Deploy registry lưu state deposit, owner = factory để cấu hình quyền core.
+        // 1. Deploy registry lưu state deposit, owner = factory để cấu hình quyền bank.
         DepositRegistry reg = new DepositRegistry();
+
+        
+
 
         // 2. Deploy certificate (ERC721). Tạm thời set owner = factory để cấu hình, sau đó chuyển lại cho creator.
         DepositCertificateUpgradeable cert = new DepositCertificateUpgradeable();
         cert.initialize(name_, symbol_, address(this));
 
-        // 3. Deploy core logic contract
-        SavingBankUpgradeable coreContract = new SavingBankUpgradeable();
-        coreContract.initialize(address(token), address(reg), address(cert), msg.sender);
+        // 3. Deploy bank logic contract
+        SavingBankUpgradeable savingBank = new SavingBankUpgradeable();
+        savingBank.initialize(address(token), address(reg), address(cert), msg.sender);
 
-        // 4. Liên kết core với registry & certificate
-        reg.setBankCore(address(coreContract), true);
-        cert.setSavingBankCore(address(coreContract));
+        
+        // 4. Liên kết bank với registry & certificate
+        reg.setBankExecutable(address(savingBank), true);
+        cert.setBankExecutable(address(savingBank));
 
         // 5. Chuyển quyền owner certificate + registry lại cho creator để họ quản trị
         cert.transferOwnership(msg.sender);
         reg.transferOwnership(msg.sender);
 
-        core = address(coreContract);
+        bank = address(savingBank);
         registry = address(reg);
         certificate = address(cert);
 
         allBanks.push(
             BankDeployment({
-                core: core,
+                bank: bank,
                 registry: registry,
                 certificate: certificate,
                 token: address(token),
@@ -95,12 +99,12 @@ contract SavingBankUpgradeableFactory is Ownable {
             })
         );
 
-        userBanks[msg.sender].push(core);
-        isBankCore[core] = true;
+        userBanks[msg.sender].push(bank);
+        isBankBeCreatedByFactory[bank] = true;
 
         emit SavingBankCreated(
             msg.sender,
-            core,
+            bank,
             registry,
             certificate,
             address(token),
@@ -109,22 +113,22 @@ contract SavingBankUpgradeableFactory is Ownable {
         );
     }
 
-    /// @notice Tạo core SavingBank mới tái sử dụng lại registry + NFT certificate cũ.
-    /// @dev Dùng trong trường hợp muốn thay thế core nhưng vẫn giữ nguyên state và NFT.
+    /// @notice Tạo bank SavingBank mới tái sử dụng lại registry + NFT certificate cũ.
+    /// @dev Dùng trong trường hợp muốn thay thế bank nhưng vẫn giữ nguyên state và NFT.
     /// Người gọi PHẢI là owner của cả registry và certificate, và sau khi tạo xong
     /// cần tự gọi:
-    ///  - DepositRegistry(registry).setBankCore(core, true)
-    ///  - DepositCertificateUpgradeable(certificate).setSavingBankCore(core)
-    /// để gán quyền cho core mới.
+    ///  - DepositRegistry(registry).setBankExecutable(bank, true)
+    ///  - DepositCertificateUpgradeable(certificate).setBankExecutable(bank)
+    /// để gán quyền cho bank mới.
     /// @param token ERC20 token dùng làm stablecoin.
     /// @param registry Địa chỉ DepositRegistry đã tồn tại.
     /// @param certificate Địa chỉ DepositCertificateUpgradeable (NFT) đã tồn tại.
-    /// @return core Địa chỉ SavingBankCoreUpgradeable mới.
+    /// @return bank Địa chỉ SavingBankUpgradeable mới.
     function createSavingBankWithExistingState(
         IERC20 token,
         address registry,
         address certificate
-    ) external returns (address core) {
+    ) external returns (address bank) {
         require(address(token) != address(0), "TOKEN_ZERO");
         require(registry != address(0), "REG_ZERO");
         require(certificate != address(0), "CERT_ZERO");
@@ -133,15 +137,15 @@ contract SavingBankUpgradeableFactory is Ownable {
         require(IOwnableLike(registry).owner() == msg.sender, "NOT_REG_OWNER");
         require(IOwnableLike(certificate).owner() == msg.sender, "NOT_CERT_OWNER");
 
-        // Deploy core mới, trỏ tới registry + certificate cũ
-        SavingBankUpgradeable coreContract = new SavingBankUpgradeable();
-        coreContract.initialize(address(token), registry, certificate, msg.sender);
+        // Deploy bank mới, trỏ tới registry + certificate cũ
+        SavingBankUpgradeable savingBank = new SavingBankUpgradeable();
+        savingBank.initialize(address(token), registry, certificate, msg.sender);
 
-        core = address(coreContract);
+        bank = address(savingBank);
 
         allBanks.push(
             BankDeployment({
-                core: core,
+                bank: bank,
                 registry: registry,
                 certificate: certificate,
                 token: address(token),
@@ -149,16 +153,15 @@ contract SavingBankUpgradeableFactory is Ownable {
             })
         );
 
-        userBanks[msg.sender].push(core);
-        isBankCore[core] = true;
-
+        userBanks[msg.sender].push(bank);
+        isBankBeCreatedByFactory[bank] = true;
         // Lấy lại name/symbol từ NFT cũ để emit event cho thuận tiện theo dõi.
         string memory name_ = DepositCertificateUpgradeable(certificate).name();
         string memory symbol_ = DepositCertificateUpgradeable(certificate).symbol();
 
         emit SavingBankCreated(
             msg.sender,
-            core,
+            bank,
             registry,
             certificate,
             address(token),
@@ -172,7 +175,7 @@ contract SavingBankUpgradeableFactory is Ownable {
         return allBanks.length;
     }
 
-    /// @notice Lấy danh sách địa chỉ core bank do một user tạo.
+    /// @notice Lấy danh sách địa chỉ bank bank do một user tạo.
     function getUserBanks(address user) external view returns (address[] memory) {
         return userBanks[user];
     }
@@ -181,10 +184,10 @@ contract SavingBankUpgradeableFactory is Ownable {
     function getBankDeployment(uint256 index)
         external
         view
-        returns (address core, address registry, address token, address creator)
+        returns (address bank, address registry, address token, address creator)
     {
         require(index < allBanks.length, "INDEX_OUT_OF_BOUNDS");
         BankDeployment storage b = allBanks[index];
-        return (b.core, b.registry, b.token, b.creator);
+        return (b.bank, b.registry, b.token, b.creator);
     }
 }

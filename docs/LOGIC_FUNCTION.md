@@ -3,7 +3,7 @@
 
 
 Tài liệu này mô tả chi tiết logic bên trong các hàm quan trọng của kiến trúc **SavingBank v2**:
-- SavingBankCoreUpgradeable (core logic, upgradable)
+- SavingBankUpgradeable (core logic, upgradable)
 - DepositRegistry (state holder cho deposit, non-upgradable)
 - DepositCertificateUpgradeable (ERC721 certificate)
 - SavingBankUpgradeableFactory (factory)
@@ -17,7 +17,7 @@ Tập trung vào:
 
 ---
 
-## 1. SavingBankCoreUpgradeable (Core logic)
+## 1. SavingBankUpgradeable (Core logic)
 
 > Lưu ý: Core **không còn lưu DepositInfo trực tiếp**; mọi state deposit nằm trong DepositRegistry.
 
@@ -283,7 +283,7 @@ Registry không nắm logic tính tiền; chỉ là nơi lưu trữ state và en
   1. Deploy `DepositCertificateUpgradeable cert = new DepositCertificateUpgradeable();`.
   2. Gọi `cert.initialize(name_, symbol_, msg.sender)`:
      - Owner của NFT collection là `msg.sender` (người tạo bank).
-  3. Deploy `SavingBankCoreUpgradeable coreContract = new SavingBankCoreUpgradeable();`.
+  3. Deploy `SavingBankUpgradeable coreContract = new SavingBankUpgradeable();`.
   4. Gọi `coreContract.initialize(address(token), address(cert), msg.sender)`:
      - Owner của core là `msg.sender`.
      - Gắn token ERC20 và contract certificate.
@@ -326,7 +326,7 @@ Registry không nắm logic tính tiền; chỉ là nơi lưu trữ state và en
 ## 4. Liên kết Security tổng thể
 
 - **Ownership:**
-  - SavingBankCoreUpgradeable: `OwnableUpgradeable` → admin cấu hình plan, vault, pause.
+  - SavingBankUpgradeable: `OwnableUpgradeable` → admin cấu hình plan, vault, pause.
   - DepositCertificateUpgradeable: `OwnableUpgradeable`, nhưng quyền mint/burn được delegate cho core thông qua `savingBankCore`.
   - SavingBankUpgradeableFactory: `Ownable`, nhưng việc tạo bank không bị hạn chế (ai cũng có thể gọi), owner chỉ dùng cho quản trị factory nếu mở rộng.
 
