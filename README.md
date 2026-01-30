@@ -73,72 +73,195 @@ Core components:
 - `DepositCertificateUpgradeable` — ERC721 certificate (tokenId == depositId)
 - `SavingBankUpgradeableFactory` — deploys wired instances per ERC20
 
++================================================================================+
+|                          SAVING BANK DETAILED ARCHITECTURE                     |
++================================================================================+
 
-graph TD
-    subgraph Wallets [Wallet Layer]
-        User([User Wallet])
-        Admin([Admin Wallet])
-    end
-
-    subgraph UI [Frontend Layer]
-        S_UI[SavingBank UI<br/>React + Wagmi]
-        A_UI[Admin UI<br/>React + Wagmi]
-    end
-
-    subgraph Core [Smart Contract Logic]
-        SBU[[SavingBankUpgradeable]]
-    end
-
-    subgraph Storage [Data & Asset Storage]
-        DR[(DepositRegistry<br/>Metadata & States)]
-        DC([DepositCertificate<br/>ERC721 NFT])
-        Vault{Vault<br/>Assets Holder}
-    end
-
-    %% Flow Admin
-    Admin -->|Manage Plans/Vault/Pause| A_UI
-    A_UI -->|Write/Read| SBU
-
-    %% Flow User
-    User -->|Approve + Call| S_UI
-    S_UI -->|Write/Read| SBU
-
-    %% Logic Internal
-    SBU -->|createDeposit| DR
-    SBU -->|mint/burn| DC
-    SBU -->|fund/withdraw| Vault
-
-    %% Style
-    style SBU fill:#f96,stroke:#333,stroke-width:2px
-    style Vault fill:#3cf,stroke:#333,stroke-width:2px
-    style DC fill:#bbf,stroke:#333
-    style DR fill:#dfd,stroke:#333
+      [ ACTORS ]                                     [ FACTORY LAYER ]
+    +------------+                         +-----------------------------------+
+    |   ADMIN    |                         |   SavingBankUpgradeableFactory    |
+    +------------+                         +-----------------------------------+
+          |                                          | deploys & links
+          | (1) Create Bank (token, name, sym)       | (registry, cert, bank)
+          v                                          v
++--------------------------------------------------------------------------------+
+| [ CORE LOGIC LAYER ]                                                           |
+|                                                                                |
+|                      SavingBankUpgradeable (Proxy/Logic)                       |
+|   +------------------------------------------------------------------------+   |
+|   | - Logic: openDeposit, renew, withdrawAtMaturity, earlyWithdraw         |   |
+|   | - Admin: createPlan, updatePlan, fundVault, pause/unpause              |   |
+|   +------------------------------------------------------------------------+   |
+|           |                        |                       |                   |
+|           | (A) create/mark        | (B) mint/burn         | (C) fund/withdraw |
+|           v                        v                       v                   |
+|  +------------------+     +------------------+     +------------------+        |
+|  | DepositRegistry  |     |DepositCertificate|     |      Vault       |        |
+|  +------------------+     +------------------+     +------------------+        |
+|  | [ STATE HOLDER ] |     | [ ERC721 NFT ]   |     | [ ASSET HOLDER ] |        |
+|  | - nextDepositId  |     | - tokenId (1:1)  |     | - vaultBalance   |        |
+|  | - _deposits map  |     | - ownerOf        |     | - safeTransfer   |        |
+|  | - activeList     |     | - metadata       |     | - immutableToken |        |
+|  +------------------+     +------------------+     +------------------+        |
+|                                                                                |
++--------------------------------------------------------------------------------+
+          |                                                   |
+          | Read State                                        | Transfer Token
+          v                                                   v
+    +------------+                                      +------------+
+    |  Frontend  | <----------------------------------- |    USER    |
+    +------------+            (Approve USDC)            +------------+
 
 
 
 
-sequenceDiagram
-    autonumber
-    participant U as User Wallet
-    participant SBU as SavingBank UI/Contract
-    participant V as Vault
-    participant DR as DepositRegistry
-    participant DC as DepositCertificate (NFT)
 
-    Note over U, SBU: Giai đoạn 1: Approve
-    U->>SBU: Approve USDC (allowance)
 
-    Note over U, V: Giai đoạn 2: openDeposit
-    U->>SBU: Gọi openDeposit(planId, amount)
-    SBU->>SBU: 1. safeTransferFrom (Pull USDC từ User)
-    SBU->>SBU: 2. safeApprove (Cho phép Vault rút tiền)
-    SBU->>V: 3. fund(amount)
-    V->>SBU: Pull USDC từ Contract vào Vault storage
-    
-    Note over SBU, DC: Giai đoạn 3: Minting & Recording
-    SBU->>DR: createDeposit (Lưu metadata)
-    SBU->>DC: mint NFT (Giao chứng chỉ cho User)
-    SBU-->>U: Hoàn tất (NFT + Active Deposit)
++================================================================================+
+|                          ACCESS CONTROL & PERMISSIONS MAP                      |
++================================================================================+
+
+      [ SUPER ADMIN / OWNER ]                    [ SYSTEM EXECUTABLE ]
+                 |                                         |
+        (Quyền tối cao - onlyOwner)               (Quyền vận hành logic)
+                 |                                         |
+                 v                                         v
++-----------------------------------+     +-----------------------------------+
+|   SavingBankUpgradeableFactory    |     |      SavingBankUpgradeable        |
++-----------------------------------+     +-----------------------------------+
+| - Triển khai hệ thống             |     | - Thực thi logic nạp/rút          |
+| - Chuyển quyền cho Bank Owner     |     | - Là "Executable" duy nhất        |
++-----------------+-----------------+     +-----------------+-----------------+
+                  |                                         |
+                  |                                         |
+                  |             CHỈ CHO PHÉP (Only)         |
+                  +-----------------------------------------+
+                                    |
+                                    v
++--------------------------------------------------------------------------------+
+|                          STORAGE & RESOURCE LAYER                              |
++================================================================================+
+|                                                                                |
+|  1. DepositRegistry (Data Holder)                                              |
+|     - modifier onlyExecutable:                                                 |
+|       -> CHỈ SavingBank được ghi dữ liệu (create/mark status).                 |
+|       -> Admin CHỈ được set quyền Executable.                                  |
+|                                                                                |
+|  2. DepositCertificate (NFT Holder)                                            |
+|     - modifier onlySavingBankExecutable:                                       |
+|       -> CHỈ SavingBank được phép Mint (khi gửi) và Burn (khi rút).            |
+|       -> User CHỈ sở hữu, không được tự tạo/hủy chứng chỉ.                     |
+|                                                                                |
+|  3. Vault (Asset Holder)                                                       |
+|     - modifier onlySavingBankOrOwner:                                          |
+|       -> CHỈ SavingBank được rút tiền để trả cho User.                         |
+|       -> Admin được rút tiền dư thừa hoặc nạp thêm thanh khoản.                |
+|                                                                                |
++--------------------------------------------------------------------------------+
+
+
+
++================================================================================+
+|                        CHI TIẾT CÁC QUYỀN TRUY CẬP                             |
++================================================================================+
+
+1. QUYỀN CỦA ADMIN (OWNER):
+   - Quản lý Plan (Thêm/Sửa/Xóa gói tiết kiệm).
+   - Pause/Unpause (Dừng hệ thống khẩn cấp).
+   - Set Fee Receiver (Ví nhận tiền phạt).
+   - Set Bank Executable (Chỉ định contract logic nào được phép ghi dữ liệu).
+   - Withdraw Vault (Rút lợi nhuận từ Vault).
+
+2. QUYỀN CỦA SAVING BANK (CORE EXECUTABLE):
+   - Gọi Registry để tạo/cập nhật trạng thái sổ.
+   - Gọi Certificate để Mint/Burn NFT.
+   - Gọi Vault để giải ngân tiền cho User.
+   - Lưu ý: User KHÔNG THỂ gọi trực tiếp vào 3 contract này.
+
+3. QUYỀN CỦA USER:
+   - Thao tác thông qua SavingBank (openDeposit, withdraw, renew).
+   - Quyền sở hữu NFT (được kiểm tra chéo qua registry.isOwnerOf).
+
+
+
+   
+
+
+
++================================================================================+
+|                          USER FUNCTIONAL WORKFLOWS                             |
++================================================================================+
+
+  (1) OPEN DEPOSIT (Mở sổ)
+  User --(Approve)--> USDC --(openDeposit)--> SavingBank --(Transfer)--> Vault
+                                                 |
+                                                 |-- Register Metadata in Registry
+                                                 |-- Mint NFT for User
+
+  (2) WITHDRAW (Rút tiền - Đúng hạn hoặc Sớm)
+  User --(withdraw)--> SavingBank --(Verify NFT)--> Registry
+                               |
+                               |-- Calculate: Principal + Interest (Matured)
+                               |          OR: Principal - Penalty (Early)
+                               |
+                               |-- Vault --(USDC)--> User
+                               |-- Burn NFT & Mark Status "Withdrawn"
+
+  (3) RENEW (Gia hạn - Lãi kép)
+  User --(renew)--> SavingBank --(Check Maturity)--> Registry
+                               |
+                               |-- NewPrincipal = Principal + Interest
+                               |-- Burn Old NFT -> Mint New NFT
+                               |-- Registry: Old -> "Renewed" | New -> "Active"
+
+
+
+
++================================================================================+
+|                         ADMIN FUNCTIONAL WORKFLOWS                             |
++================================================================================+
+
+  (1) PLAN MANAGEMENT (Quản lý gói)
+  Admin --(createPlan)--> [ SavingBank ] --> Gán ID mới (ID: 1, 2, 3...)
+  Admin --(updatePlan)--> [ SavingBank ] --> Chỉnh sửa APR, Tenor, Min/Max
+                                             (Gói cũ đã mở không bị ảnh hưởng)
+
+  (2) VAULT & LIQUIDITY (Quản lý thanh khoản)
+  Admin --(fundVault)----> Nạp thêm USDC vào Vault để trả lãi
+  Admin --(withdrawVault)-> Rút USDC dư thừa/Lợi nhuận từ Vault về ví Admin
+  Admin --(setFeeReceiver)-> Cài đặt ví nhận tiền phạt (Penalty) khi User rút sớm
+
+  (3) CIRCUIT BREAKER (Dừng khẩn cấp)
+  Admin --(pause)--------> Đóng băng tất cả open/withdraw/renew (khi có sự cố)
+  Admin --(unpause)------> Mở lại hệ thống sau khi kiểm tra an toàn
+
+
+
++================================================================================+
+|                        DEPLOYMENT FLOW (FACTORY LEVEL)                         |
++================================================================================+
+
+1. Admin calls Factory.createSavingBank(USDC_Address)
+2. Factory DEPLOYS:
+   |_ DepositRegistry (Lưu dữ liệu cho riêng USDC Bank)
+   |_ DepositCertificate (NFT riêng cho USDC Bank)
+   |_ SavingBankUpgradeable (Logic riêng cho USDC Bank)
+3. SavingBank INITIALIZES:
+   |_ Tự động tạo contract Vault mới (Gắn chặt với token USDC)
+4. Factory SETS PERMISSIONS:
+   |_ Registry: Chỉ nhận lệnh từ SavingBank này
+   |_ Certificate: Chỉ cho phép SavingBank này Mint/Burn
+5. Factory TRANSFERS OWNERSHIP:
+   |_ Chuyển quyền Admin toàn bộ bộ 3 contract này về cho người gọi (Creator)
+
+
+
+
+
+
+
+
+
 
 
 
