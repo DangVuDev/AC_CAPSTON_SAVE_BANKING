@@ -241,7 +241,7 @@ contract SavingBankUpgradeable is
         if (plan.maxDeposit != 0 && amount > plan.maxDeposit) revert InvalidAmount();
 
         // 1. Chuyển tiền từ user vào SavingBank (transit ngắn)
-        token.safeTransferFrom(address(this), address(vault), amount);
+        token.safeTransferFrom(msg.sender, address(vault), amount);
 
         uint64 startAt = uint64(block.timestamp);
         uint64 maturityAt = uint64(block.timestamp + uint64(plan.tenorDays) * 1 days);

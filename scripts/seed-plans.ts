@@ -1,21 +1,21 @@
-// scripts/seed-plans.ts
-import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { ethers } from "hardhat";
 
 async function main() {
   const [owner] = await ethers.getSigners();
-  const bankAddr = "0x..."; // SavingBank address
-  const bank = await ethers.getContractAt("SavingBankUpgradeable", bankAddr, owner);
-
   console.log("Seeding plans as owner:", owner.address);
 
-  // Plan 1: 30 ngày, 5%
-  await bank.createPlan(30, 500, ethers.utils.parseUnits("100", 6), 0, 1000, true);
-  console.log("Plan 1 created");
+  const BANK_ADDRESS = "0xEBb2863137Dff7e96886090D303373E8Ec9CF5B8";
 
-  // Plan 2: 90 ngày, 7%
-  await bank.createPlan(90, 700, ethers.utils.parseUnits("500", 6), ethers.utils.parseUnits("10000", 6), 1500, true);
-  console.log("Plan 2 created");
+  const bank = await ethers.getContractAt("SavingBankUpgradeable", BANK_ADDRESS, owner);
+
+  await bank.createPlan(30, 500, ethers.parseUnits("100", 6), 0n, 1000, true);
+  console.log("Plan 1 created (30 days, 5%)");
+
+  await bank.createPlan(90, 700, ethers.parseUnits("500", 6), ethers.parseUnits("10000", 6), 1500, true);
+  console.log("Plan 2 created (90 days, 7%)");
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -1,36 +1,41 @@
-// scripts/create-sample-bank.ts
-import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { ethers } from "hardhat";
+import hre from "hardhat";
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
-  console.log("Creating sample bank using deployer:", deployer.address);
+  const [deployer] = await hre.ethers.getSigners();
+  console.log("Creating sample bank with deployer:", deployer.address);
 
-  // Lấy factory từ deployment
-  const factoryAddr = (await hre.deployments.get("SavingBankUpgradeableFactory")).address;
-  const factory = await ethers.getContractAt("SavingBankUpgradeableFactory", factoryAddr, deployer);
+  // <<<=== DÁN TOKEN ADDRESS VÀO ĐÂY ===>>>
+  const TOKEN_ADDRESS = "0xf5059a5D33d5853360D16C683c16e67980206f36"; // <-- Thay bằng address MockStablecoin thật của mày
+  // <<<====================================>>>
+  const deployments = await hre.deployments.all();
+  // <<<=== DÁN FACTORY ADDRESS VÀO ĐÂY (nếu cần, hoặc dùng từ deployments) ===>>>
+  let factoryAddr = deployments.SavingBankUpgradeableFactory?.address;
 
-  // Token MockStablecoin
-  const tokenAddr = (await hre.deployments.get("MockStablecoin")).address;
+  if (!factoryAddr) {
+    console.error("Factory not deployed yet. Run deploy --tags Factory first.");
+    process.exit(1);
+  }
 
-  // Tên và symbol cho NFT certificate
+  console.log("Factory address:", factoryAddr);
+  console.log("Token address (manual input):", TOKEN_ADDRESS);
+
+  const factory = await hre.ethers.getContractAt("SavingBankUpgradeableFactory", factoryAddr);
+
   const name = "SavingBank Certificate";
   const symbol = "SBC";
 
   console.log("Calling createSavingBank...");
-  console.log(`- Token: ${tokenAddr}`);
-  console.log(`- Name: ${name}`);
-  console.log(`- Symbol: ${symbol}`);
-
-  const tx = await factory.createSavingBank(tokenAddr, name, symbol);
+  const tx = await factory.createSavingBank(TOKEN_ADDRESS, name, symbol);
   console.log("Tx hash:", tx.hash);
 
   const receipt = await tx.wait();
-  console.log("Gas used:", receipt.gasUsed.toString());
+  console.log("Gas used:", receipt?.gasUsed.toString());
 
-  // Parse event SavingBankCreated
-  const event = receipt.events?.find(e => e.event === "SavingBankCreated");
-  if (event?.args) {
+  const event = receipt?.logs
+    .map(log => factory.interface.parseLog(log))
+    .find(e => e?.name === "SavingBankCreated");
+
+  if (event) {
     console.log("Sample bank created:");
     console.log(`- SavingBank: ${event.args.bank}`);
     console.log(`- Registry: ${event.args.registry}`);

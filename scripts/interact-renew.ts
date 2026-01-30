@@ -1,23 +1,32 @@
-// scripts/interact-renew.ts
 import { ethers } from "hardhat";
 
 async function main() {
   const [user] = await ethers.getSigners();
-  const bankAddr = "0x...";
-  const bank = await ethers.getContractAt("SavingBankUpgradeable", bankAddr, user);
+  console.log("User address:", user.address);
+
+  const BANK_ADDRESS = "0xEBb2863137Dff7e96886090D303373E8Ec9CF5B8";
+
+  const bank = await ethers.getContractAt("SavingBankUpgradeable", BANK_ADDRESS, user);
 
   const depositId = 1n;
-  const newPlanId = 2; // plan mới
+  const newPlanId = 2n;
 
   console.log("Calling renewDeposit...");
   const tx = await bank.renewDeposit(depositId, newPlanId);
   console.log("Tx hash:", tx.hash);
 
   const receipt = await tx.wait();
-  const event = receipt.events?.find(e => e.event === "Renewed");
-  if (event?.args) {
+
+  const event = receipt?.logs
+    .map(log => bank.interface.parseLog(log))
+    .find(e => e?.name === "Renewed");
+
+  if (event) {
     console.log("New Deposit ID:", event.args.newDepositId.toString());
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

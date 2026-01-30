@@ -8,7 +8,16 @@ import * as dotenv from "dotenv";
 import "hardhat-deploy";
 import "hardhat-deploy-ethers";
 import "@nomicfoundation/hardhat-ethers";
-import "@typechain/hardhat";
+// TypeChain plugin can be heavy on some Windows Node builds and cause libuv asserts.
+// Load it conditionally so we can disable with DISABLE_TYPECHAIN=1 in the environment.
+if (process.env.DISABLE_TYPECHAIN !== "1") {
+  try {
+    require("@typechain/hardhat");
+  } catch (e) {
+    // If the plugin is not installed or fails to load, fail gracefully and continue.
+    console.warn("@typechain/hardhat not loaded:", e );
+  }
+}
 
 dotenv.config();
 
@@ -50,22 +59,21 @@ module.exports = {
     }
   },
   solidity: {
-    compilers: [
-      {
-        version: "0.8.28",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 1000,
-          },
-          viaIR: true
-        },
-      }
-    ],
+    version: "0.8.24",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,          // Giảm runs xuống để ưu tiên size thay vì gas runtime
+      },
+      viaIR: true,          // BẬT DÒNG NÀY – giảm size cực mạnh (thường dưới 20KB)
+      metadata: {
+        bytecodeHash: "none", // Giảm thêm size metadata
+      },
+    },
   },
   abiExporter: {
     path: "data/abi",
-    runOnCompile: true,
+    runOnCompile: false,
     clear: true,
     flat: false,
     only: [],
@@ -77,7 +85,7 @@ module.exports = {
   contractSizer: {
     alphaSort: true,
     disambiguatePaths: false,
-    runOnCompile: true,
+    runOnCompile: false,
   },
   etherscan: {
     apiKey: {

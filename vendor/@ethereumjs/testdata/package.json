@@ -1,0 +1,8 @@
+{
+  "name": "@ethereumjs/testdata",
+  "version": "1.0.0",
+  "description": "Local shim for tests to satisfy dependency",
+  "main": "index.js",
+  "author": "local",
+  "license": "MIT"
+}

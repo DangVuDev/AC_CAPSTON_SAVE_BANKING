@@ -13,9 +13,8 @@ contract Vault is Ownable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable token;
-    address public immutable savingBankCore;
+    address public immutable savingBank;
 
-    uint256 public vaultBalance; // Tổng số dư trong vault (principal + interest + penalty)
 
     event VaultFunded(address indexed from, uint256 amount);
     event VaultWithdrawn(address indexed to, uint256 amount);
@@ -27,7 +26,7 @@ contract Vault is Ownable {
     error ZeroAddress();
 
     modifier onlySavingBankOrOwner() {
-        if (msg.sender != savingBankCore && msg.sender != owner()) {
+        if (msg.sender != savingBank && msg.sender != owner()) {
             revert OnlySavingBankOrOwner();
         }
         _;
@@ -35,14 +34,14 @@ contract Vault is Ownable {
 
     constructor(
         address _token,
-        address _savingBankCore,
+        address _savingBank,
         address _initialOwner
     ) Ownable(_initialOwner) {
-        if (_token == address(0) || _savingBankCore == address(0) || _initialOwner == address(0)) {
+        if (_token == address(0) || _savingBank == address(0) || _initialOwner == address(0)) {
             revert ZeroAddress();
         }
         token = IERC20(_token);
-        savingBankCore = _savingBankCore;
+        savingBank = _savingBank;
     }
 
     /// @notice Nạp tiền vào vault (principal hoặc interest từ SavingBank)
@@ -51,7 +50,6 @@ contract Vault is Ownable {
         if (amount == 0) revert InvalidAmount();
 
         token.safeTransferFrom(msg.sender, address(this), amount);
-        vaultBalance += amount;
 
         emit VaultFunded(msg.sender, amount);
     }
@@ -61,10 +59,10 @@ contract Vault is Ownable {
     /// @param to Địa chỉ nhận tiền
     function withdrawTo(uint256 amount, address to) external onlySavingBankOrOwner {
         if (amount == 0) revert InvalidAmount();
+        uint256 vaultBalance = token.balanceOf(address(this));
         if (amount > vaultBalance) revert InsufficientVaultBalance();
         if (to == address(0)) revert ZeroAddress();
 
-        vaultBalance -= amount;
         token.safeTransfer(to, amount);
 
         emit VaultWithdrawn(to, amount);
@@ -74,10 +72,10 @@ contract Vault is Ownable {
     /// @param amount Số lượng token cần rút
     function withdraw(uint256 amount) external onlySavingBankOrOwner {
         if (amount == 0) revert InvalidAmount();
+        uint256 vaultBalance = token.balanceOf(address(this));
         if (amount > vaultBalance) revert InsufficientVaultBalance();
         if (msg.sender == address(0)) revert ZeroAddress();
 
-        vaultBalance -= amount;
         token.safeTransfer(msg.sender, amount);
 
         emit VaultWithdrawn(msg.sender, amount);
@@ -89,14 +87,13 @@ contract Vault is Ownable {
         if (amount == 0) return; // Không revert để tránh block tx
 
         token.safeTransferFrom(msg.sender, address(this), amount);
-        vaultBalance += amount;
 
         emit PenaltyReceived(msg.sender, amount);
     }
 
     /// @notice Xem số dư hiện tại trong vault
     function getVaultBalance() external view returns (uint256) {
-        return vaultBalance;
+        return token.balanceOf(address(this));
     }
 
     /// @notice Xem token address
@@ -105,7 +102,7 @@ contract Vault is Ownable {
     }
 
     /// @notice Xem địa chỉ SavingBank core
-    function getSavingBankCore() external view returns (address) {
-        return savingBankCore;
+    function getSavingBank() external view returns (address) {
+        return savingBank;
     }
 }
