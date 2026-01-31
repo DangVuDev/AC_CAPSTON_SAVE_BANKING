@@ -270,44 +270,38 @@ For details see [docs/PLAN.md](docs/PLAN.md).
 
 ---
 
-## Usage & common commands
+## Common scripts
 
-Interactive console example:
+Scripts are in the `scripts/` folder. Common commands:
 
-```bash
-npx hardhat console --network sepolia
-# in console (example)
-const [deployer] = await ethers.getSigners()
-const factory = await ethers.getContractAt('SavingBankUpgradeableFactory', '<factory-address>')
-const total = await factory.allBanksLength()
-```
-# 1. Khởi chạy node local (chạy ở một terminal riêng biệt)
-npx hardhat node
+- Create a sample bank (local):
 
-# 2. Deploy các contract cơ bản (Token + Factory)
-npx hardhat deploy --network localhost --tags MockStablecoin --reset
-npx hardhat deploy --network localhost --tags Factory --reset
+   `npx hardhat run scripts/00_create-sample-bank.ts --network localhost`
 
-# 3. Khởi tạo instance Bank và cài đặt Plan
-# Chạy script tạo bank (Nhớ lấy địa chỉ Bank từ Terminal log)
-npx hardhat run scripts/create-sample-bank.ts --network localhost
-# Chạy script tạo các gói lãi suất (Cần sửa BANK_ADDRESS trong file)
-npx hardhat run scripts/seed-plans.ts --network localhost
+- Seed plans for a bank:
 
-# 4. Thực hiện các chức năng chính (Interact)
-# Mở sổ tiết kiệm
-npx hardhat run scripts/interact-open-deposit.ts --network localhost
-# Rút tiền đúng hạn
-npx hardhat run scripts/interact-withdraw-maturity.ts --network localhost
-# Rút tiền sớm (Penalty)
-npx hardhat run scripts/interact-early-withdraw.ts --network localhost
-# Gia hạn sổ tiết kiệm
-npx hardhat run scripts/interact-renew.ts --network localhost
+   `npx hardhat run scripts/01_seed-plans.ts --network localhost`
 
-# 5. Chạy toàn bộ hệ thống test tự động
-npx hardhat test
+- Open a deposit (example flow):
 
-# 6. Chạy các bài test integration riêng lẻ để kiểm tra logic cụ thể
+   `npx hardhat run scripts/02_interact-open-deposit.ts --network localhost`
+
+- Withdraw at maturity:
+
+   `npx hardhat run scripts/04_interact-withdraw-maturity.ts --network localhost`
+
+- Early withdraw (penalty):
+
+   `npx hardhat run scripts/03_interact-early-withdraw.ts --network localhost`
+
+- Renew deposit:
+
+   `npx hardhat run scripts/05_interact-renew.ts --network localhost`
+
+--
+
+
+## . Chạy các bài test integration riêng lẻ để kiểm tra logic cụ thể
 npx hardhat test test/integration/open-deposit.test.ts
 npx hardhat test test/integration/withdraw-maturity.test.ts
 npx hardhat test test/integration/early-withdraw.test.ts
@@ -330,6 +324,21 @@ npx hardhat test test/integration/fund-vault.test.ts
 - Architecture & plan: [docs/PLAN.md](docs/PLAN.md)
 - Function logic & security: [docs/LOGIC_FUNCTION.md](docs/LOGIC_FUNCTION.md)
 
+---
+
+
+
+---
+### Verify
+
+MockERC20
+```
+https://sepolia.etherscan.io/address/0xEFaA690F939cac21Cdf197B83742c06FF95298b7#code
+```
+Factory
+```
+https://sepolia.etherscan.io/address/0x8a328848cf9F911F1E54f2333125AB2dB6964cAd#code
+```
 ---
 
 ## Contributing

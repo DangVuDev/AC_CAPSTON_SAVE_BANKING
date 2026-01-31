@@ -97,9 +97,8 @@ module.exports = {
     runOnCompile: false,
   },
   etherscan: {
-    apiKey: {
-      "sepolia": [etherAPI],
-    }
+    // Etherscan V2 expects a single API key string. Read from env `ETHERSCAN_API`.
+    apiKey: process.env.ETHERSCAN_API || "",
   },
   sourcify: {
     // Disabled by default

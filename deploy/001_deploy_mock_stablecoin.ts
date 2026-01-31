@@ -22,14 +22,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   log(`MockStablecoin deployed at: ${result.address}`);
 
-  // Optional: verify trên testnet
-  if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
-    log("Verifying MockStablecoin...");
-    await hre.run("verify:verify", {
-      address: result.address,
-      constructorArguments: ["Mock USD", "mUSD", 6],
-    });
-  }
+  
 };
 
 func.tags = ["MockStablecoin"];

@@ -22,14 +22,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   log(`SavingBankUpgradeableFactory deployed at: ${result.address}`);
 
-  // Verify trên testnet
-  if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
-    log("Verifying SavingBankUpgradeableFactory...");
-    await hre.run("verify:verify", {
-      address: result.address,
-      constructorArguments: [],
-    });
-  }
 };
 
 func.tags = ["Factory"];
