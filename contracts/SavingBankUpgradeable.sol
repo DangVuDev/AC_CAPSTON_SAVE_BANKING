@@ -190,8 +190,10 @@ contract SavingBankUpgradeable is
     /// @notice Nạp tiền vào vault (chỉ owner)
     function fundVault(uint256 amount) external override onlyOwner {
         if (amount == 0) revert InvalidAmount();
+        // Transfer tokens from owner directly into Vault. Vault.fund also
+        // attempts a transferFrom, which would cause a duplicate transfer
+        // when called from here. Perform a single direct transfer instead.
         token.safeTransferFrom(msg.sender, address(vault), amount);
-        vault.fund(amount);
         emit VaultFunded(msg.sender, amount);
     }
 

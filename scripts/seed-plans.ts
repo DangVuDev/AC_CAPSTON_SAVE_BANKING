@@ -4,8 +4,8 @@ async function main() {
   const [owner] = await ethers.getSigners();
   console.log("Seeding plans as owner:", owner.address);
 
-  const BANK_ADDRESS = "0xEBb2863137Dff7e96886090D303373E8Ec9CF5B8";
-
+  const BANK_ADDRESS = process.env.BANK_ADDRESS;
+  if (!BANK_ADDRESS) throw new Error('Set BANK_ADDRESS in environment before running this script');
   const bank = await ethers.getContractAt("SavingBankUpgradeable", BANK_ADDRESS, owner);
 
   await bank.createPlan(30, 500, ethers.parseUnits("100", 6), 0n, 1000, true);

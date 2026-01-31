@@ -4,8 +4,11 @@ async function main() {
   const [user] = await ethers.getSigners();
   console.log("User address:", user.address);
 
-  // DÁN BANK ADDRESS MỚI NHẤT TỪ LOG CREATE-SAMPLE-BANK
-  const BANK_ADDRESS = "0xEBb2863137Dff7e96886090D303373E8Ec9CF5B8"; // <-- DÁN ĐÂY
+  // BANK address must be provided via env var `BANK_ADDRESS`
+  const BANK_ADDRESS = process.env.BANK_ADDRESS;
+  if (!BANK_ADDRESS) {
+    throw new Error('Set BANK_ADDRESS in environment before running this script');
+  }
 
   const bank = await ethers.getContractAt("SavingBankUpgradeable", BANK_ADDRESS, user);
 

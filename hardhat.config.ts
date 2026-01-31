@@ -1,6 +1,13 @@
 import { task } from "hardhat/config";
 import "@openzeppelin/hardhat-upgrades";
-import "@nomicfoundation/hardhat-verify";
+// Load Etherscan verification plugin only when an API key is provided
+if (process.env.ETHERSCAN_API && process.env.ETHERSCAN_API !== "") {
+  try {
+    require("@nomicfoundation/hardhat-verify");
+  } catch (e) {
+    console.warn("hardhat-verify plugin not available:", e);
+  }
+}
 import "hardhat-contract-sizer";
 import "hardhat-abi-exporter";
 import "hardhat-gas-reporter";
@@ -34,6 +41,8 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 const {
   TESTNET_PRIVATE_KEY: testnetPrivateKey,
   MAINNET_PRIVATE_KEY: mainnetPrivateKey,
+  ETHERSCAN_API: etherAPI,
+
 } = process.env;
 const reportGas = process.env.REPORT_GAS;
 
@@ -89,7 +98,7 @@ module.exports = {
   },
   etherscan: {
     apiKey: {
-      "mainnet": "",
+      "sepolia": [etherAPI],
     }
   },
   sourcify: {

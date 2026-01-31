@@ -281,37 +281,38 @@ const [deployer] = await ethers.getSigners()
 const factory = await ethers.getContractAt('SavingBankUpgradeableFactory', '<factory-address>')
 const total = await factory.allBanksLength()
 ```
+# 1. Khởi chạy node local (chạy ở một terminal riêng biệt)
+npx hardhat node
 
-Deploy & run scenario scripts (examples):
+# 2. Deploy các contract cơ bản (Token + Factory)
+npx hardhat deploy --network localhost --tags MockStablecoin --reset
+npx hardhat deploy --network localhost --tags Factory --reset
 
-```bash
-npx hardhat deploy --tags MockStablecoin --network sepolia
-npx hardhat deploy --tags SavingBankFactory --network sepolia
-npx hardhat deploy --tags SavingBankInstance --network sepolia
-npx hardhat deploy --tags SavingBankAdminCases --network sepolia
-npx hardhat deploy --tags SavingBankUserCases --network sepolia
-```
+# 3. Khởi tạo instance Bank và cài đặt Plan
+# Chạy script tạo bank (Nhớ lấy địa chỉ Bank từ Terminal log)
+npx hardhat run scripts/create-sample-bank.ts --network localhost
+# Chạy script tạo các gói lãi suất (Cần sửa BANK_ADDRESS trong file)
+npx hardhat run scripts/seed-plans.ts --network localhost
 
-Notes:
+# 4. Thực hiện các chức năng chính (Interact)
+# Mở sổ tiết kiệm
+npx hardhat run scripts/interact-open-deposit.ts --network localhost
+# Rút tiền đúng hạn
+npx hardhat run scripts/interact-withdraw-maturity.ts --network localhost
+# Rút tiền sớm (Penalty)
+npx hardhat run scripts/interact-early-withdraw.ts --network localhost
+# Gia hạn sổ tiết kiệm
+npx hardhat run scripts/interact-renew.ts --network localhost
 
-- Ensure the deployer account has enough token balance (admin scripts may mint tokens for testing) and ETH for gas.
-- If RPC provider is unreliable, switch `SEPOLIA_RPC_URL` in `.env` to a stable provider (Alchemy/Infura).
-
----
-
-## Testing
-
-Run full test suite:
-
-```bash
+# 5. Chạy toàn bộ hệ thống test tự động
 npx hardhat test
-```
 
-Run a specific test file:
-
-```bash
-npx hardhat test test/SavingBankUpgradeable.test.ts
-```
+# 6. Chạy các bài test integration riêng lẻ để kiểm tra logic cụ thể
+npx hardhat test test/integration/open-deposit.test.ts
+npx hardhat test test/integration/withdraw-maturity.test.ts
+npx hardhat test test/integration/early-withdraw.test.ts
+npx hardhat test test/integration/renew-deposit.test.ts
+npx hardhat test test/integration/fund-vault.test.ts
 
 ---
 
